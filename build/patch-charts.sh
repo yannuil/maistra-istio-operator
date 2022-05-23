@@ -113,11 +113,8 @@ function patchGalley() {
         - "*"\
         resources:\
         - "*"' $webhookconfig
-  sed_wrap -i -e '1 i\
-\{\{- if .Values.global.configValidation \}\}
-' $webhookconfig
 
-  sed_wrap -i -e 's/^---/{{- end }}/' $webhookconfig
+  sed_wrap -i '/.*objectSelector:/,/.*{{- end }}/d' $webhookconfig
 
   sed_wrap -i -e 's/failurePolicy: Ignore/failurePolicy: Fail/' $webhookconfig
 
