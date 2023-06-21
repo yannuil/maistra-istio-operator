@@ -17,6 +17,13 @@ function copyOverlay() {
 function patchTemplates() {
   echo "patching Istio Helm charts"
 
+  for file in $(find "${HELM_DIR}/gateways" -name "*.yaml" -print0 -o -name "*.yaml.tpl" | xargs -0 grep -Hl '^kind: Deployment'); do
+    sed_wrap -i -e '/^spec:/,$ { /template:$/,$ { /metadata:$/,$ { s/^\(.*\)labels:/\1labels:\
+{{ with $gateway.podLabels }}\
+{{- toYaml . | indent 8 }}\
+{{- end }}/ } } }' "$file"
+  done
+
   # MAISTRA-506 add a maistra-control-plane label for deployment specs
   for file in $(find "${HELM_DIR}" -name "*.yaml" -print0 -o -name "*.yaml.tpl" | xargs -0 grep -Hl '^kind: Deployment'); do
     sed_wrap -i -e '/^spec:/,$ { /template:$/,$ { /metadata:$/,$ { s/^\(.*\)labels:/\1labels:\

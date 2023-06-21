@@ -108,6 +108,9 @@ spec:
       labels:
         maistra.io/gateway: {{ $gateway.name | default "istio-egressgateway" }}.{{ $gateway.namespace | default .Release.Namespace }}
         maistra-control-plane: {{ .Release.Namespace }}
+{{ with $gateway.podLabels }}
+{{- toYaml . | indent 8 }}
+{{- end }}
 {{ $gateway.labels | toYaml | indent 8 }}
 {{- if eq .Release.Namespace "istio-system"}}
         heritage: Tiller

@@ -31,6 +31,9 @@ spec:
     metadata:
       labels:
         maistra-control-plane: {{ .Release.Namespace }}
+{{ with $gateway.podLabels }}
+{{- toYaml . | indent 8 }}
+{{- end }}
 {{ $gateway.labels | toYaml | indent 8 }}
 {{- if eq .Release.Namespace "istio-system"}}
         heritage: Tiller
