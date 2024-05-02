@@ -380,3 +380,13 @@ func GetMissingDependency(err error) string {
 	}
 	return ""
 }
+
+// slices.Contains function is available only for Go1.18+
+func containsLogLevel(logLevelArray []v2.LogLevel, logLevel v2.LogLevel) bool {
+	for _, v := range logLevelArray {
+		if v == logLevel {
+			return true
+		}
+	}
+	return false
+}

@@ -138,6 +138,7 @@ func (v *versionStrategyV2_3) ValidateV2(ctx context.Context, cl client.Client, 
 	allErrors = v.validateRuntime(spec, allErrors)
 	allErrors = v.validateMixerDisabled(spec, allErrors)
 	allErrors = v.validateAddons(spec, allErrors)
+	allErrors = v.validateGeneralLoggingComponentLevels(spec, allErrors)
 	return NewValidationError(allErrors...)
 }
 
@@ -192,6 +193,25 @@ func (v *versionStrategyV2_3) validateAddons(spec *v2.ControlPlaneSpec, allError
 	if spec.Addons.ThreeScale != nil {
 		allErrors = append(allErrors, fmt.Errorf("support for 3scale has been removed in v2.1; "+
 			"please remove the spec.addons.3scale section from the SMCP and configure the 3scale WebAssembly adapter using a ServiceMeshExtension resource"))
+	}
+	return allErrors
+}
+
+func (v *versionStrategyV2_3) validateGeneralLoggingComponentLevels(spec *v2.ControlPlaneSpec, allErrors []error) []error {
+	if spec.General == nil || spec.General.Logging == nil || spec.General.Logging.ComponentLevels == nil {
+		return allErrors
+	}
+	componentLevelLogging := spec.General.Logging.ComponentLevels
+
+	// istiod support only these logLevel, other logLevel would cause crash in istiod discovery container
+	istiodSupportedLogLevels := []v2.LogLevel{v2.LogLevelDebug, v2.LogLevelError, v2.LogLevelWarning, v2.LogLevelInfo, v2.LogLevelFatal, v2.LogLevelNone}
+
+	// go through the filed map of filed component log levels
+	for _, logLevel := range componentLevelLogging {
+		// if the filed log level is not in the supported log level list, append the error
+		if !containsLogLevel(istiodSupportedLogLevels, logLevel) {
+			allErrors = append(allErrors, fmt.Errorf("istiod doesn't support '%s' log level", logLevel))
+		}
 	}
 	return allErrors
 }
