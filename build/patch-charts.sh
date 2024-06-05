@@ -170,9 +170,13 @@ function patchGalley() {
   sed_wrap -i -e '/- apiGroups:.*certificates\.k8s\.io/,/verbs:/ d' "${HELM_DIR}/istio-control/istio-discovery/templates/clusterrole.yaml"
   sed_wrap -i -e '/- apiGroups:.*authentication\.k8s\.io/,/verbs:/ d' "${HELM_DIR}/istio-control/istio-discovery/templates/clusterrole.yaml"
 
-  # remove istiod-reader ClusterRole and ClusterRoleBindings
-  rm "${HELM_DIR}/istio-control/istio-discovery/templates/reader-clusterrole.yaml"
-  rm "${HELM_DIR}/istio-control/istio-discovery/templates/reader-clusterrolebinding.yaml"
+  # reader-clusterrole and reader-clusterrolebinding added, if clusterWide and multiCluster mode enabled
+  sed_wrap -i '1i\{{- if and .Values.global.clusterWide .Values.global.multiCluster.enabled }}' "${HELM_DIR}/istio-control/istio-discovery/templates/reader-clusterrole.yaml"  
+  sed_wrap -i '$ a\{{- end }}' "${HELM_DIR}/istio-control/istio-discovery/templates/reader-clusterrole.yaml" 
+
+  sed_wrap -i '1i\{{- if and .Values.global.clusterWide .Values.global.multiCluster.enabled }}' "${HELM_DIR}/istio-control/istio-discovery/templates/reader-clusterrolebinding.yaml"  
+  sed_wrap -i '$ a\{{- end }}' "${HELM_DIR}/istio-control/istio-discovery/templates/reader-clusterrolebinding.yaml"  
+ 
 
   convertClusterRoleBinding "${HELM_DIR}/istio-control/istio-discovery/templates/clusterrolebinding.yaml" ""
   sed_wrap -i -e '/- "discovery"/ a\
