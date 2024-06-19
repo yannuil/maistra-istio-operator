@@ -96,6 +96,8 @@ spec:
             # Deploy as a standalone CNI plugin or as chained?
             - name: CHAINED_CNI_PLUGIN
               value: "{{ .Values.cni.chained }}"
+            - name: REPAIR_ENABLED
+              value: "{{ .Values.cni.repair.enabled }}"
             # Directory in which the CNI config file should be created (host path mounted in the container)
             - name: MOUNTED_CNI_NET_DIR
               value: {{ default "/host/etc/cni/net.d" .Values.cni.mountedCniConfDir }}

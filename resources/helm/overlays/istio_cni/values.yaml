@@ -1,3 +1,5 @@
 cni:
   defaultResourceName: ossm-cni
   enabled: false
+  repair:
+    enabled: false
