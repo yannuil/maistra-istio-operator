@@ -227,12 +227,6 @@ function patchGalley() {
           - name: PILOT_CA_CERT_CONFIG_MAP_NAME\
             value: "{{ .Values.global.caCertConfigMapName }}"\
 {{- if .Values.gatewayAPI.enabled }}\
-          - name: PILOT_ENABLE_GATEWAY_API\
-            value: "true"\
-          - name: PILOT_ENABLE_GATEWAY_API_STATUS\
-            value: "true"\
-          - name: PILOT_ENABLE_GATEWAY_API_DEPLOYMENT_CONTROLLER\
-            value: "true"\
 {{- if .Values.gatewayAPI.controllerMode }}\
           - name: PILOT_ENABLE_GATEWAY_CONTROLLER_MODE\
             value: "true"\
