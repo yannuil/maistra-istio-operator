@@ -237,7 +237,7 @@ function patchGalley() {
           - name: PILOT_GATEWAY_API_DEPLOYMENT_DEFAULT_LABELS\
             value: "{\\"gateway.openshift.io/inject\\":\\"true\\"}"\
 {{- end }}\
-{{- else }}\
+{{- else if not .Values.global.clusterWide }}\
           - name: PILOT_ENABLE_GATEWAY_API\
             value: "false"\
           - name: PILOT_ENABLE_GATEWAY_API_STATUS\
