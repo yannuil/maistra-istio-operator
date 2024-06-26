@@ -68,7 +68,54 @@ spec:
             httpGet:
               path: /readyz
               port: 8000
-          command: ["install-cni"]
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -xe
+              # Collect host OS information
+              . /host/etc/os-release
+
+              # Detect the major version of the host OS the pod is running on
+              rhelmajor=
+              case "${ID}" in
+                rhcos|scos)
+                  rhelmajor=$(echo $RHEL_VERSION | sed -E 's/([0-9]+)\.{1}[0-9]+(\.[0-9]+)?/\1/')
+                ;;
+                rhel)
+                  rhelmajor=$(echo "${VERSION_ID}" | cut -f 1 -d .)
+                ;;
+                fedora)
+                  if [ "${VARIANT_ID}" == "coreos" ]; then
+                    rhelmajor=8
+                  else
+                    echo "WARNING: Unsupported Fedora variant=${VARIANT_ID}"
+                  fi
+                ;;
+                *)
+                  echo "WARNING: Unsupported OS ID=${ID}"
+                ;;
+              esac
+
+              # Select the appropriate CNI binary to copy based on the OS version
+              case "${rhelmajor}" in
+                8)
+                  sourcebin=/opt/cni/bin/istio-cni-rhel8
+                ;;
+                9)
+                  sourcebin=/opt/cni/bin/istio-cni-rhel9
+                ;;
+                *)
+                  sourcebin=/opt/cni/bin/istio-cni-rhel9
+                  echo "INFO: Running in a non-FIPS compliant environment; using istio-cni binary compiled with latest RHEL version: sourcebin=${sourcebin}"
+                ;;
+              esac
+
+              # Move the source binary to where install-cni expects it to be located and clean up unused binaries
+              mv $sourcebin /opt/cni/bin/istio-cni
+              rm /opt/cni/bin/istio-cni-rhel*
+
+              install-cni
           securityContext:
             privileged: true
           env:
@@ -104,6 +151,9 @@ spec:
               name: etc-cni-dir
             - mountPath: /var/run/istio-cni
               name: cni-log-dir
+            - mountPath: /host/etc/os-release
+              name: os-release
+              readOnly: true
           resources:
 {{- if .Values.cni.resources }}
 {{ toYaml .Values.cni.resources | indent 12 }}
@@ -124,4 +174,9 @@ spec:
         - name: cni-log-dir
           hostPath:
             path: /var/run/istio-cni
+        # Used for determining host OS version
+        - name: os-release
+          hostPath:
+            path: /etc/os-release
+            type: File
 {{- end }}
