@@ -17,7 +17,6 @@ function generateArchitectureLabels() {
 : "${MAISTRA_VERSION:?"Need to set maistra version, e.g. 2.0.1"}"
 if [[ ${COMMUNITY} == "true" ]]; then
   BUILD_TYPE="maistra"
-  JAEGER_STORAGE="Memory"
   CSV_DESCRIPTION="The Maistra Operator enables you to install, configure, and manage an instance of Maistra service mesh. Maistra is based on the open source Istio project."
   APP_DESCRIPTION="Maistra is a platform that provides behavioral insight and operational control over a service mesh, providing a uniform way to connect, secure, and monitor microservice applications."
   DISPLAY_NAME="Maistra Service Mesh"
@@ -38,7 +37,6 @@ if [[ ${COMMUNITY} == "true" ]]; then
   OLM_FEATURE_CSI="false"
 else
   BUILD_TYPE="servicemesh"
-  JAEGER_STORAGE="Memory"
   CSV_DESCRIPTION="The OpenShift Service Mesh Operator enables you to install, configure, and manage an instance of Red Hat OpenShift Service Mesh. OpenShift Service Mesh is based on the open source Istio project."
   APP_DESCRIPTION="Red Hat OpenShift Service Mesh is a platform that provides behavioral insight and operational control over a service mesh, providing a uniform way to connect, secure, and monitor microservice applications."
   DISPLAY_NAME="Red Hat OpenShift Service Mesh"
@@ -147,7 +145,6 @@ $RELATED_IMAGES"
   sed -i -e 's+__OLM_FEATURE_CNF__+'"$OLM_FEATURE_CNF"'+' "${csv_path}"
   sed -i -e 's+__OLM_FEATURE_CNI__+'"$OLM_FEATURE_CNI"'+' "${csv_path}"
   sed -i -e 's+__OLM_FEATURE_CSI__+'"$OLM_FEATURE_CSI"'+' "${csv_path}"
-  sed -i -e 's/__JAEGER_STORAGE__/'${JAEGER_STORAGE}'/' "${csv_path}"
   sed -i -e 's/__DATE__/'"$(date +%Y-%m-%dT%H:%M:%S%Z)"'/g' "${csv_path}"
   sed -i -e 's+__IMAGE_SRC__+'"${IMAGE_SRC}"'+g' "${csv_path}"
   sed -i -e '/__ARCHITECTURE_LABELS__/ {
