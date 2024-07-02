@@ -42,6 +42,12 @@ var (
 				Type: v2.TracerTypeNone,
 			},
 		),
+		jsonpatch.NewPatch("add", "/spec/security",
+			v2.SecurityConfig{
+				Identity: &v2.IdentityConfig{
+					Type: v2.IdentityConfigTypeThirdParty,
+				},
+			}),
 		jsonpatch.NewPatch("add", "/spec/profiles", []interface{}{v1.DefaultTemplate}),
 	)
 	acceptV1WithDefaultMutation = admission.Patched("",

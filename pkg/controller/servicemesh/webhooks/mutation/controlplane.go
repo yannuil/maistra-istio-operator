@@ -85,9 +85,15 @@ func (v *ControlPlaneMutator) Handle(ctx context.Context, req admission.Request)
 			mutator.SetOpenShiftRouteEnabled(false)
 		}
 
-		// removing tracing by default on creation of v2.6 SMCP
-		if !mutator.IsTracingTypeSpecified() && effectiveVersion.AtLeast(versions.V2_6.Version()) {
-			mutator.DisableTracing()
+		if effectiveVersion.AtLeast(versions.V2_6.Version()) {
+			// Removing tracing by default on creation of v2.6 SMCP
+			if !mutator.IsTracingTypeSpecified() {
+				mutator.DisableTracing()
+			}
+			// Setting security identity type to ThirdParty
+			if !mutator.IsSecurityIdentityTypeSpecified() {
+				mutator.SetSecurityThirdPartyIdentityType()
+			}
 		}
 	}
 
@@ -169,6 +175,8 @@ type smcpmutator interface {
 	SetOpenShiftRouteEnabled(bool)
 	IsTracingTypeSpecified() bool
 	DisableTracing()
+	IsSecurityIdentityTypeSpecified() bool
+	SetSecurityThirdPartyIdentityType()
 }
 
 type smcppatch struct {
@@ -233,6 +241,18 @@ func (m *smcpv1mutator) IsOpenShiftRouteEnabled() *bool {
 }
 
 func (m *smcpv1mutator) SetOpenShiftRouteEnabled(value bool) {}
+
+func (m *smcpv1mutator) IsTracingTypeSpecified() bool {
+	return false
+}
+
+func (m *smcpv1mutator) DisableTracing() {}
+
+func (m *smcpv1mutator) IsSecurityIdentityTypeSpecified() bool {
+	return false
+}
+
+func (m *smcpv1mutator) SetSecurityThirdPartyIdentityType() {}
 
 type smcpv2mutator struct {
 	*smcppatch
@@ -300,12 +320,6 @@ func (m *smcpv2mutator) SetOpenShiftRouteEnabled(value bool) {
 	m.patches = append(m.patches, jsonpatch.NewPatch("add", "/spec/gateways", *gateways))
 }
 
-func (m *smcpv1mutator) IsTracingTypeSpecified() bool {
-	return false
-}
-
-func (m *smcpv1mutator) DisableTracing() {}
-
 func (m *smcpv2mutator) IsTracingTypeSpecified() bool {
 	tracing := m.smcp.Spec.Tracing
 
@@ -320,4 +334,35 @@ func (m *smcpv2mutator) DisableTracing() {
 	}
 	tracing.Type = v2.TracerTypeNone
 	m.patches = append(m.patches, jsonpatch.NewPatch("add", "/spec/tracing", *tracing))
+}
+
+func (m *smcpv2mutator) IsSecurityIdentityTypeSpecified() bool {
+	security := m.smcp.Spec.Security
+
+	if security == nil {
+		return false
+	}
+
+	identity := security.Identity
+
+	return !(identity == nil || identity.Type == "")
+}
+
+func (m *smcpv2mutator) SetSecurityThirdPartyIdentityType() {
+	security := m.smcp.Spec.Security
+
+	if security == nil {
+		security = &v2.SecurityConfig{}
+	}
+
+	identity := security.Identity
+
+	if identity == nil {
+		identity = &v2.IdentityConfig{}
+		security.Identity = identity
+	}
+
+	identity.Type = v2.IdentityConfigTypeThirdParty
+
+	m.patches = append(m.patches, jsonpatch.NewPatch("add", "/spec/security", *security))
 }

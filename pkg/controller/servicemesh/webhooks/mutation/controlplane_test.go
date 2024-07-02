@@ -101,7 +101,7 @@ func TestNoMutation(t *testing.T) {
 			},
 		},
 		{
-			name: "no-mutation.v2_6 with tracing type set to Jaeger",
+			name: "no-mutation.v2_6 with tracing type set to Jaeger and security identity type set to Kubernetes",
 			controlPlane: func() runtime.Object {
 				controlPlane := newControlPlaneV2("istio-system", versions.V2_6)
 				controlPlane.Spec.Gateways = &maistrav2.GatewaysConfig{
@@ -114,11 +114,16 @@ func TestNoMutation(t *testing.T) {
 				controlPlane.Spec.Tracing = &maistrav2.TracingConfig{
 					Type: maistrav2.TracerTypeJaeger,
 				}
+				controlPlane.Spec.Security = &maistrav2.SecurityConfig{
+					Identity: &maistrav2.IdentityConfig{
+						Type: maistrav2.IdentityConfigTypeKubernetes,
+					},
+				}
 				return controlPlane
 			},
 		},
 		{
-			name: "no-mutation.v2_6 with tracing type set to None",
+			name: "no-mutation.v2_6 with tracing type set to None and security identity type set to ThirdParty",
 			controlPlane: func() runtime.Object {
 				controlPlane := newControlPlaneV2("istio-system", versions.V2_6)
 				controlPlane.Spec.Gateways = &maistrav2.GatewaysConfig{
@@ -130,6 +135,12 @@ func TestNoMutation(t *testing.T) {
 				}
 				controlPlane.Spec.Tracing = &maistrav2.TracingConfig{
 					Type: maistrav2.TracerTypeNone,
+				}
+
+				controlPlane.Spec.Security = &maistrav2.SecurityConfig{
+					Identity: &maistrav2.IdentityConfig{
+						Type: maistrav2.IdentityConfigTypeThirdParty,
+					},
 				}
 				return controlPlane
 			},
