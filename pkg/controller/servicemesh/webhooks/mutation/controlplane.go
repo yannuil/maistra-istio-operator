@@ -60,39 +60,44 @@ func (v *ControlPlaneMutator) Handle(ctx context.Context, req admission.Request)
 	// on create we set the version to the current default version
 	// on update, if the version is removed we reset it to what was previously set
 	currentVersion := mutator.NewVersion()
-	effectiveVersion, _ := versions.ParseVersion(currentVersion)
 	if currentVersion == "" {
 		switch req.AdmissionRequest.Operation {
 		case admissionv1beta1.Create:
 			log.Info("Setting .spec.version to default value", "version", versions.DefaultVersion.String())
-			mutator.SetVersion(mutator.DefaultVersion())
-			effectiveVersion, _ = versions.ParseVersion(mutator.DefaultVersion())
+			currentVersion = mutator.DefaultVersion()
 		case admissionv1beta1.Update:
 			oldVersion := mutator.OldVersion()
 			if currentVersion != oldVersion && oldVersion != versions.InvalidVersion.String() {
 				log.Info("Setting .spec.version to existing value", "version", oldVersion)
-				mutator.SetVersion(oldVersion)
-				effectiveVersion, _ = versions.ParseVersion(oldVersion)
+				currentVersion = oldVersion
 			}
 		}
 	}
+	mutator.SetVersion(currentVersion)
+	effectiveVersion, _ := versions.ParseVersion(currentVersion)
 
-	if req.AdmissionRequest.Operation == admissionv1beta1.Create {
-		// As we are deprecating IOR, on creating a v2.5 SMCP we want to disable IOR if not specified explicitly
-		newOpenShiftRoute := mutator.IsOpenShiftRouteEnabled()
-
-		if newOpenShiftRoute == nil && effectiveVersion.AtLeast(versions.V2_5.Version()) {
-			mutator.SetOpenShiftRouteEnabled(false)
-		}
-
-		if effectiveVersion.AtLeast(versions.V2_6.Version()) {
-			// Removing tracing by default on creation of v2.6 SMCP
-			if !mutator.IsTracingTypeSpecified() {
-				mutator.DisableTracing()
+	if req.AdmissionRequest.Operation == admissionv1beta1.Update {
+		oldsmcp := &v2.ServiceMeshControlPlane{}
+		err := v.decoder.DecodeRaw(req.AdmissionRequest.OldObject, oldsmcp)
+		if err != nil {
+			log.Error(err, "error decoding admission request")
+		} else {
+			lastAppliedSpec := oldsmcp.Status.AppliedSpec
+			// Although we deprecated IOR in 2.5, but we will carry over the old value.
+			if effectiveVersion.AtLeast(versions.V2_5.Version()) {
+				if !mutator.IsOpenShiftRouteSpecified() {
+					mutator.SetOpenShiftRouteEnabled(*lastAppliedSpec.Gateways.OpenShiftRoute.Enabled)
+				}
 			}
-			// Setting security identity type to ThirdParty
-			if !mutator.IsSecurityIdentityTypeSpecified() {
-				mutator.SetSecurityThirdPartyIdentityType()
+
+			// Although we deprecated Jaeger tracing and FirstParty identity in 2.6, but we will carry over the old value.
+			if effectiveVersion.AtLeast(versions.V2_6.Version()) {
+				if !mutator.IsTracingTypeSpecified() {
+					mutator.SetTracing(lastAppliedSpec.Tracing.Type)
+				}
+				if !mutator.IsSecurityIdentityTypeSpecified() {
+					mutator.SetSecurityIdentityType(lastAppliedSpec.Security.Identity.Type)
+				}
 			}
 		}
 	}
@@ -171,12 +176,12 @@ type smcpmutator interface {
 	GetProfiles() []string
 	SetProfiles(profiles []string)
 	GetPatches() []jsonpatch.JsonPatchOperation
-	IsOpenShiftRouteEnabled() *bool
+	IsOpenShiftRouteSpecified() bool
 	SetOpenShiftRouteEnabled(bool)
 	IsTracingTypeSpecified() bool
-	DisableTracing()
+	SetTracing(v2.TracerType)
 	IsSecurityIdentityTypeSpecified() bool
-	SetSecurityThirdPartyIdentityType()
+	SetSecurityIdentityType(v2.IdentityConfigType)
 }
 
 type smcppatch struct {
@@ -236,8 +241,8 @@ func (m *smcpv1mutator) GetProfiles() []string {
 	return m.smcp.Spec.Profiles
 }
 
-func (m *smcpv1mutator) IsOpenShiftRouteEnabled() *bool {
-	return nil
+func (m *smcpv1mutator) IsOpenShiftRouteSpecified() bool {
+	return false
 }
 
 func (m *smcpv1mutator) SetOpenShiftRouteEnabled(value bool) {}
@@ -246,13 +251,13 @@ func (m *smcpv1mutator) IsTracingTypeSpecified() bool {
 	return false
 }
 
-func (m *smcpv1mutator) DisableTracing() {}
+func (m *smcpv1mutator) SetTracing(value v2.TracerType) {}
 
 func (m *smcpv1mutator) IsSecurityIdentityTypeSpecified() bool {
 	return false
 }
 
-func (m *smcpv1mutator) SetSecurityThirdPartyIdentityType() {}
+func (m *smcpv1mutator) SetSecurityIdentityType(value v2.IdentityConfigType) {}
 
 type smcpv2mutator struct {
 	*smcppatch
@@ -285,20 +290,16 @@ func (m *smcpv2mutator) GetProfiles() []string {
 	return m.smcp.Spec.Profiles
 }
 
-func (m *smcpv2mutator) IsOpenShiftRouteEnabled() *bool {
+func (m *smcpv2mutator) IsOpenShiftRouteSpecified() bool {
 	gateways := m.smcp.Spec.Gateways
 
 	if gateways == nil {
-		return nil
+		return false
 	}
 
 	route := gateways.OpenShiftRoute
 
-	if route == nil {
-		return nil
-	}
-
-	return route.Enabled
+	return !(route == nil || route.Enabled == nil)
 }
 
 func (m *smcpv2mutator) SetOpenShiftRouteEnabled(value bool) {
@@ -326,13 +327,13 @@ func (m *smcpv2mutator) IsTracingTypeSpecified() bool {
 	return !(tracing == nil || tracing.Type == "")
 }
 
-func (m *smcpv2mutator) DisableTracing() {
+func (m *smcpv2mutator) SetTracing(value v2.TracerType) {
 	tracing := m.smcp.Spec.Tracing
 
 	if tracing == nil {
 		tracing = &v2.TracingConfig{}
 	}
-	tracing.Type = v2.TracerTypeNone
+	tracing.Type = value
 	m.patches = append(m.patches, jsonpatch.NewPatch("add", "/spec/tracing", *tracing))
 }
 
@@ -348,7 +349,7 @@ func (m *smcpv2mutator) IsSecurityIdentityTypeSpecified() bool {
 	return !(identity == nil || identity.Type == "")
 }
 
-func (m *smcpv2mutator) SetSecurityThirdPartyIdentityType() {
+func (m *smcpv2mutator) SetSecurityIdentityType(value v2.IdentityConfigType) {
 	security := m.smcp.Spec.Security
 
 	if security == nil {
@@ -362,7 +363,7 @@ func (m *smcpv2mutator) SetSecurityThirdPartyIdentityType() {
 		security.Identity = identity
 	}
 
-	identity.Type = v2.IdentityConfigTypeThirdParty
+	identity.Type = value
 
 	m.patches = append(m.patches, jsonpatch.NewPatch("add", "/spec/security", *security))
 }

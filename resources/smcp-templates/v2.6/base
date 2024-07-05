@@ -14,7 +14,7 @@ spec:
     egress:
       enabled: true
     openshiftRoute:
-      enabled: true
+      enabled: false
 
   general:
     logging:
@@ -34,7 +34,7 @@ spec:
 
   security:
     identity:
-      type: Kubernetes
+      type: ThirdParty
 
   telemetry:
     type: Istiod
@@ -43,7 +43,7 @@ spec:
     type: None
 
   tracing:
-    type: Jaeger
+    type: None
 
   addons:
     prometheus:
