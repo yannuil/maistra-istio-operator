@@ -72,34 +72,28 @@ func (v *ControlPlaneMutator) Handle(ctx context.Context, req admission.Request)
 				currentVersion = oldVersion
 			}
 		}
+		mutator.SetVersion(currentVersion)
 	}
-	mutator.SetVersion(currentVersion)
 	effectiveVersion, _ := versions.ParseVersion(currentVersion)
 
 	if req.AdmissionRequest.Operation == admissionv1beta1.Update {
-		oldsmcp := &v2.ServiceMeshControlPlane{}
-		err := v.decoder.DecodeRaw(req.AdmissionRequest.OldObject, oldsmcp)
-		if err != nil {
-			log.Error(err, "error decoding admission request")
-		} else {
-			lastAppliedSpec := oldsmcp.Status.AppliedSpec
-			// Although we deprecated IOR in 2.5, but we will carry over the old value.
-			if effectiveVersion.AtLeast(versions.V2_5.Version()) {
-				if !mutator.IsOpenShiftRouteSpecified() {
-					mutator.SetOpenShiftRouteEnabled(*lastAppliedSpec.Gateways.OpenShiftRoute.Enabled)
-				}
-			}
-
-			// Although we deprecated Jaeger tracing and FirstParty identity in 2.6, but we will carry over the old value.
-			if effectiveVersion.AtLeast(versions.V2_6.Version()) {
-				if !mutator.IsTracingTypeSpecified() {
-					mutator.SetTracing(lastAppliedSpec.Tracing.Type)
-				}
-				if !mutator.IsSecurityIdentityTypeSpecified() {
-					mutator.SetSecurityIdentityType(lastAppliedSpec.Security.Identity.Type)
-				}
+		// Although we deprecated IOR in 2.5, but we will carry over the old value.
+		if effectiveVersion.AtLeast(versions.V2_5.Version()) {
+			if !mutator.IsOpenShiftRouteSpecified() {
+				mutator.PreserveOpenShiftRouteEnablement()
 			}
 		}
+
+		// Although we deprecated Jaeger tracing and FirstParty identity in 2.6, but we will carry over the old value.
+		if effectiveVersion.AtLeast(versions.V2_6.Version()) {
+			if !mutator.IsTracingTypeSpecified() {
+				mutator.PreserveTracing()
+			}
+			if !mutator.IsSecurityIdentityTypeSpecified() {
+				mutator.PreserveSecurityIdentityType()
+			}
+		}
+
 	}
 
 	if len(mutator.GetProfiles()) == 0 {
@@ -177,11 +171,11 @@ type smcpmutator interface {
 	SetProfiles(profiles []string)
 	GetPatches() []jsonpatch.JsonPatchOperation
 	IsOpenShiftRouteSpecified() bool
-	SetOpenShiftRouteEnabled(bool)
+	PreserveOpenShiftRouteEnablement()
 	IsTracingTypeSpecified() bool
-	SetTracing(v2.TracerType)
+	PreserveTracing()
 	IsSecurityIdentityTypeSpecified() bool
-	SetSecurityIdentityType(v2.IdentityConfigType)
+	PreserveSecurityIdentityType()
 }
 
 type smcppatch struct {
@@ -245,19 +239,19 @@ func (m *smcpv1mutator) IsOpenShiftRouteSpecified() bool {
 	return false
 }
 
-func (m *smcpv1mutator) SetOpenShiftRouteEnabled(value bool) {}
+func (m *smcpv1mutator) PreserveOpenShiftRouteEnablement() {}
 
 func (m *smcpv1mutator) IsTracingTypeSpecified() bool {
 	return false
 }
 
-func (m *smcpv1mutator) SetTracing(value v2.TracerType) {}
+func (m *smcpv1mutator) PreserveTracing() {}
 
 func (m *smcpv1mutator) IsSecurityIdentityTypeSpecified() bool {
 	return false
 }
 
-func (m *smcpv1mutator) SetSecurityIdentityType(value v2.IdentityConfigType) {}
+func (m *smcpv1mutator) PreserveSecurityIdentityType() {}
 
 type smcpv2mutator struct {
 	*smcppatch
@@ -291,79 +285,86 @@ func (m *smcpv2mutator) GetProfiles() []string {
 }
 
 func (m *smcpv2mutator) IsOpenShiftRouteSpecified() bool {
-	gateways := m.smcp.Spec.Gateways
-
-	if gateways == nil {
-		return false
-	}
-
-	route := gateways.OpenShiftRoute
-
-	return !(route == nil || route.Enabled == nil)
+	return m.smcp.Spec.Gateways != nil &&
+		m.smcp.Spec.Gateways.OpenShiftRoute != nil &&
+		m.smcp.Spec.Gateways.OpenShiftRoute.Enabled == nil
 }
 
-func (m *smcpv2mutator) SetOpenShiftRouteEnabled(value bool) {
-	gateways := m.smcp.Spec.Gateways
+func (m *smcpv2mutator) PreserveOpenShiftRouteEnablement() {
+	lastAppliedSpec := m.oldsmcp.Status.AppliedSpec
 
-	if gateways == nil {
-		gateways = &v2.GatewaysConfig{}
+	if lastAppliedSpec.Gateways != nil &&
+		lastAppliedSpec.Gateways.OpenShiftRoute != nil &&
+		m.oldsmcp.Status.AppliedSpec.Gateways.OpenShiftRoute.Enabled != nil {
+		value := lastAppliedSpec.Gateways.OpenShiftRoute.Enabled
+		gateways := m.smcp.Spec.Gateways
+
+		if gateways == nil {
+			gateways = &v2.GatewaysConfig{}
+		}
+
+		route := gateways.OpenShiftRoute
+
+		if route == nil {
+			route = &v2.OpenShiftRouteConfig{}
+			gateways.OpenShiftRoute = route
+		}
+
+		route.Enablement = v2.Enablement{Enabled: value}
+
+		m.patches = append(m.patches, jsonpatch.NewPatch("add", "/spec/gateways", *gateways))
 	}
-
-	route := gateways.OpenShiftRoute
-
-	if route == nil {
-		route = &v2.OpenShiftRouteConfig{}
-		gateways.OpenShiftRoute = route
-	}
-
-	route.Enablement = v2.Enablement{Enabled: &value}
-
-	m.patches = append(m.patches, jsonpatch.NewPatch("add", "/spec/gateways", *gateways))
 }
 
 func (m *smcpv2mutator) IsTracingTypeSpecified() bool {
-	tracing := m.smcp.Spec.Tracing
-
-	return !(tracing == nil || tracing.Type == "")
+	return m.smcp.Spec.Tracing != nil &&
+		m.smcp.Spec.Tracing.Type != ""
 }
 
-func (m *smcpv2mutator) SetTracing(value v2.TracerType) {
-	tracing := m.smcp.Spec.Tracing
+func (m *smcpv2mutator) PreserveTracing() {
+	lastAppliedSpec := m.oldsmcp.Status.AppliedSpec
 
-	if tracing == nil {
-		tracing = &v2.TracingConfig{}
+	if lastAppliedSpec.Tracing != nil &&
+		lastAppliedSpec.Tracing.Type != "" {
+		value := lastAppliedSpec.Tracing.Type
+		tracing := m.smcp.Spec.Tracing
+
+		if tracing == nil {
+			tracing = &v2.TracingConfig{}
+		}
+		tracing.Type = value
+		m.patches = append(m.patches, jsonpatch.NewPatch("add", "/spec/tracing", *tracing))
 	}
-	tracing.Type = value
-	m.patches = append(m.patches, jsonpatch.NewPatch("add", "/spec/tracing", *tracing))
 }
 
 func (m *smcpv2mutator) IsSecurityIdentityTypeSpecified() bool {
-	security := m.smcp.Spec.Security
-
-	if security == nil {
-		return false
-	}
-
-	identity := security.Identity
-
-	return !(identity == nil || identity.Type == "")
+	return m.smcp.Spec.Security != nil &&
+		m.smcp.Spec.Security.Identity != nil &&
+		m.smcp.Spec.Security.Identity.Type != ""
 }
 
-func (m *smcpv2mutator) SetSecurityIdentityType(value v2.IdentityConfigType) {
-	security := m.smcp.Spec.Security
+func (m *smcpv2mutator) PreserveSecurityIdentityType() {
+	lastAppliedSpec := m.oldsmcp.Status.AppliedSpec
 
-	if security == nil {
-		security = &v2.SecurityConfig{}
+	if lastAppliedSpec.Security != nil &&
+		lastAppliedSpec.Security.Identity != nil &&
+		lastAppliedSpec.Security.Identity.Type != "" {
+		value := lastAppliedSpec.Security.Identity.Type
+		security := m.smcp.Spec.Security
+
+		if security == nil {
+			security = &v2.SecurityConfig{}
+		}
+
+		identity := security.Identity
+
+		if identity == nil {
+			identity = &v2.IdentityConfig{}
+			security.Identity = identity
+		}
+
+		identity.Type = value
+
+		m.patches = append(m.patches, jsonpatch.NewPatch("add", "/spec/security", *security))
 	}
-
-	identity := security.Identity
-
-	if identity == nil {
-		identity = &v2.IdentityConfig{}
-		security.Identity = identity
-	}
-
-	identity.Type = value
-
-	m.patches = append(m.patches, jsonpatch.NewPatch("add", "/spec/security", *security))
 }

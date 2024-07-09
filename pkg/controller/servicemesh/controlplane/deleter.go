@@ -56,11 +56,10 @@ func (r *controlPlaneInstanceReconciler) Delete(ctx context.Context) error {
 	version, err = versions.ParseVersion(r.Instance.Spec.Version)
 	if err != nil {
 		log.Error(err, "invalid version specified")
-		return nil
-	}
-
-	// remove namespace labels
-	if err == nil {
+		// return nil
+		err = nil
+	} else {
+		// remove namespace labels
 		err = removeNamespaceLabels(ctx, r.Client, r.Instance.Namespace, version)
 	}
 

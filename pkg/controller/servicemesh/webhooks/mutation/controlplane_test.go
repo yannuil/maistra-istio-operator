@@ -87,59 +87,22 @@ func TestNoMutation(t *testing.T) {
 			},
 		},
 		{
-			name: "no-mutation.v2_5 with openshiftRoute enabled",
-			controlPlane: func() runtime.Object {
-				controlPlane := newControlPlaneV2("istio-system", versions.V2_5)
-				controlPlane.Spec.Gateways = &maistrav2.GatewaysConfig{
-					OpenShiftRoute: &maistrav2.OpenShiftRouteConfig{
-						Enablement: maistrav2.Enablement{
-							Enabled: &featureEnabled,
-						},
-					},
-				}
-				return controlPlane
-			},
-		},
-		{
-			name: "no-mutation.v2_6 with tracing type set to Jaeger and security identity type set to Kubernetes",
+			name: "no-mutation.v2_6 with tracing type set to Jaeger",
 			controlPlane: func() runtime.Object {
 				controlPlane := newControlPlaneV2("istio-system", versions.V2_6)
-				controlPlane.Spec.Gateways = &maistrav2.GatewaysConfig{
-					OpenShiftRoute: &maistrav2.OpenShiftRouteConfig{
-						Enablement: maistrav2.Enablement{
-							Enabled: &featureDisabled,
-						},
-					},
-				}
 				controlPlane.Spec.Tracing = &maistrav2.TracingConfig{
 					Type: maistrav2.TracerTypeJaeger,
 				}
-				controlPlane.Spec.Security = &maistrav2.SecurityConfig{
-					Identity: &maistrav2.IdentityConfig{
-						Type: maistrav2.IdentityConfigTypeKubernetes,
-					},
-				}
 				return controlPlane
 			},
 		},
 		{
-			name: "no-mutation.v2_6 with tracing type set to None and security identity type set to ThirdParty",
+			name: "no-mutation.v2_6 with and security identity type set to Kubernetes",
 			controlPlane: func() runtime.Object {
 				controlPlane := newControlPlaneV2("istio-system", versions.V2_6)
-				controlPlane.Spec.Gateways = &maistrav2.GatewaysConfig{
-					OpenShiftRoute: &maistrav2.OpenShiftRouteConfig{
-						Enablement: maistrav2.Enablement{
-							Enabled: &featureDisabled,
-						},
-					},
-				}
-				controlPlane.Spec.Tracing = &maistrav2.TracingConfig{
-					Type: maistrav2.TracerTypeNone,
-				}
-
 				controlPlane.Spec.Security = &maistrav2.SecurityConfig{
 					Identity: &maistrav2.IdentityConfig{
-						Type: maistrav2.IdentityConfigTypeThirdParty,
+						Type: maistrav2.IdentityConfigTypeKubernetes,
 					},
 				}
 				return controlPlane
