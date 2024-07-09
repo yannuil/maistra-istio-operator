@@ -34,7 +34,7 @@ spec:
 
   security:
     identity:
-      type: ThridParty
+      type: ThirdParty
 
   telemetry:
     type: Istiod
