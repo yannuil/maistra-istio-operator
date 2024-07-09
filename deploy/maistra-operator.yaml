@@ -6,7 +6,7 @@ metadata:
   labels:
     maistra-version: 2.6.0
   annotations:
-    service.beta.openshift.io/inject-cabundle: "true"
+    service.beta.openshift.io/inject-cabundle: "false"
     controller-gen.kubebuilder.io/version: v0.4.1
   creationTimestamp: null
   name: servicemeshcontrolplanes.maistra.io
@@ -10999,13 +10999,12 @@ metadata:
 
 ---
 
+# NOTE: this is only needed on vanilla Kubernetes; On OpenShift, the Operator Lifecycle Manager (OLM) creates the service automatically
 apiVersion: v1
 kind: Service
 metadata:
-  name: maistra-admission-controller
+  name: istio-operator-service
   namespace: istio-operator
-  annotations:
-    service.beta.openshift.io/serving-cert-secret-name: maistra-operator-serving-cert
 spec:
   ports:
   - port: 443
@@ -11103,9 +11102,6 @@ spec:
         - name: operator-olm-config
           mountPath: /etc/operator/olm
           readOnly: true
-        - name: webhook-tls-volume
-          readOnly: true
-          mountPath: /tmp/k8s-webhook-server/serving-certs
         - name: smcp-templates
           readOnly: true
           mountPath: /usr/local/share/istio-operator/templates/
@@ -11117,10 +11113,6 @@ spec:
           - fieldRef:
               fieldPath: metadata.annotations
             path: config.properties
-      - name: webhook-tls-volume
-        secret:
-          secretName: maistra-operator-serving-cert
-          optional: true # this won't be available until service-ca creates the secret
       - name: smcp-templates
         configMap:
           name: smcp-templates
