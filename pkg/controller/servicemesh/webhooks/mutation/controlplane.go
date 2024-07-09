@@ -60,34 +60,36 @@ func (v *ControlPlaneMutator) Handle(ctx context.Context, req admission.Request)
 	// on create we set the version to the current default version
 	// on update, if the version is removed we reset it to what was previously set
 	currentVersion := mutator.NewVersion()
-	effectiveVersion, _ := versions.ParseVersion(currentVersion)
 	if currentVersion == "" {
 		switch req.AdmissionRequest.Operation {
 		case admissionv1beta1.Create:
 			log.Info("Setting .spec.version to default value", "version", versions.DefaultVersion.String())
 			mutator.SetVersion(mutator.DefaultVersion())
-			effectiveVersion, _ = versions.ParseVersion(mutator.DefaultVersion())
 		case admissionv1beta1.Update:
 			oldVersion := mutator.OldVersion()
 			if currentVersion != oldVersion && oldVersion != versions.InvalidVersion.String() {
 				log.Info("Setting .spec.version to existing value", "version", oldVersion)
 				mutator.SetVersion(oldVersion)
-				effectiveVersion, _ = versions.ParseVersion(oldVersion)
 			}
 		}
 	}
 
+	// As we are deprecating IOR, on creating a v2.5 SMCP we want to disable IOR if not specified explicitly
 	if req.AdmissionRequest.Operation == admissionv1beta1.Create {
-		// As we are deprecating IOR, on creating a v2.5 SMCP we want to disable IOR if not specified explicitly
 		newOpenShiftRoute := mutator.IsOpenShiftRouteEnabled()
 
-		if newOpenShiftRoute == nil && effectiveVersion.AtLeast(versions.V2_5.Version()) {
-			mutator.SetOpenShiftRouteEnabled(false)
-		}
-
-		// removing tracing by default on creation of v2.6 SMCP
-		if !mutator.IsTracingTypeSpecified() && effectiveVersion.AtLeast(versions.V2_6.Version()) {
-			mutator.DisableTracing()
+		if newOpenShiftRoute == nil {
+			var ver versions.Version
+			var err error
+			// If version is not specified
+			if currentVersion == "" {
+				ver, err = versions.ParseVersion(mutator.DefaultVersion())
+			} else {
+				ver, err = versions.ParseVersion(currentVersion)
+			}
+			if err == nil && ver.AtLeast(versions.V2_5.Version()) {
+				mutator.SetOpenShiftRouteEnabled(false)
+			}
 		}
 	}
 
@@ -167,8 +169,6 @@ type smcpmutator interface {
 	GetPatches() []jsonpatch.JsonPatchOperation
 	IsOpenShiftRouteEnabled() *bool
 	SetOpenShiftRouteEnabled(bool)
-	IsTracingTypeSpecified() bool
-	DisableTracing()
 }
 
 type smcppatch struct {
@@ -298,26 +298,4 @@ func (m *smcpv2mutator) SetOpenShiftRouteEnabled(value bool) {
 	route.Enablement = v2.Enablement{Enabled: &value}
 
 	m.patches = append(m.patches, jsonpatch.NewPatch("add", "/spec/gateways", *gateways))
-}
-
-func (m *smcpv1mutator) IsTracingTypeSpecified() bool {
-	return false
-}
-
-func (m *smcpv1mutator) DisableTracing() {}
-
-func (m *smcpv2mutator) IsTracingTypeSpecified() bool {
-	tracing := m.smcp.Spec.Tracing
-
-	return !(tracing == nil || tracing.Type == "")
-}
-
-func (m *smcpv2mutator) DisableTracing() {
-	tracing := m.smcp.Spec.Tracing
-
-	if tracing == nil {
-		tracing = &v2.TracingConfig{}
-	}
-	tracing.Type = v2.TracerTypeNone
-	m.patches = append(m.patches, jsonpatch.NewPatch("add", "/spec/tracing", *tracing))
 }
