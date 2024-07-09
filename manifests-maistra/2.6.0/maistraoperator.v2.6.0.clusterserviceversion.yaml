@@ -41,10 +41,6 @@ metadata:
           },
           "spec": {
             "version": "v2.6",
-            "tracing": {
-              "type": "Jaeger",
-              "sampling": 10000
-            },
             "policy": {
                "type": "Istiod"
             },
@@ -52,13 +48,6 @@ metadata:
                "type": "Istiod"
             },
             "addons": {
-              "jaeger": {
-                "install": {
-                  "storage": {
-                    "type": "Memory"
-                  }
-                }
-              },
               "prometheus": {
                 "enabled": true
               },
