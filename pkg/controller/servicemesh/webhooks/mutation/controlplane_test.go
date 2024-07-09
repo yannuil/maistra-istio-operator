@@ -15,11 +15,6 @@ import (
 	"github.com/maistra/istio-operator/pkg/controller/versions"
 )
 
-var (
-	featureDisabled = false
-	featureEnabled  = true
-)
-
 func TestNoMutation(t *testing.T) {
 	testCases := []struct {
 		name         string
@@ -73,40 +68,10 @@ func TestNoMutation(t *testing.T) {
 			},
 		},
 		{
-			name: "no-mutation.v2 with openshiftRoute disabled",
+			name: "no-mutation.v2",
 			controlPlane: func() runtime.Object {
 				controlPlane := newControlPlaneV2("istio-system")
 				controlPlane.Spec.Version = versions.DefaultVersion.String()
-				controlPlane.Spec.Gateways = &maistrav2.GatewaysConfig{
-					OpenShiftRoute: &maistrav2.OpenShiftRouteConfig{
-						Enablement: maistrav2.Enablement{
-							Enabled: &featureDisabled,
-						},
-					},
-				}
-				return controlPlane
-			},
-		},
-		{
-			name: "no-mutation.v2 with openshiftRoute enabled",
-			controlPlane: func() runtime.Object {
-				controlPlane := newControlPlaneV2("istio-system")
-				controlPlane.Spec.Version = versions.DefaultVersion.String()
-				controlPlane.Spec.Gateways = &maistrav2.GatewaysConfig{
-					OpenShiftRoute: &maistrav2.OpenShiftRouteConfig{
-						Enablement: maistrav2.Enablement{
-							Enabled: &featureEnabled,
-						},
-					},
-				}
-				return controlPlane
-			},
-		},
-		{
-			name: "no-mutation.v2_4",
-			controlPlane: func() runtime.Object {
-				controlPlane := newControlPlaneV2("istio-system")
-				controlPlane.Spec.Version = versions.V2_4.String()
 				return controlPlane
 			},
 		},
@@ -124,41 +89,52 @@ func TestNoMutation(t *testing.T) {
 // Test if the webhook defaults Version to the existing Version on an update
 func TestCreate(t *testing.T) {
 	testCases := []struct {
-		name             string
-		controlPlanes    func() runtime.Object
-		expectedResponse admission.Response
+		name          string
+		controlPlanes func() (runtime.Object, runtime.Object)
 	}{
 		{
-			name: "default.v2",
-			controlPlanes: func() runtime.Object {
-				return newEmptyControlPlaneV2("istio-system")
+			name: "default-version.v2",
+			controlPlanes: func() (runtime.Object, runtime.Object) {
+				controlPlane := newControlPlaneV2("istio-system")
+				controlPlane.Spec.Version = ""
+
+				mutatedControlPlane := controlPlane.DeepCopy()
+				mutatedControlPlane.Spec.Version = versions.DefaultVersion.String()
+				return controlPlane, mutatedControlPlane
 			},
-			expectedResponse: acceptV2WithDefaultMutation,
 		},
 		{
-			name: "default.v1",
-			controlPlanes: func() runtime.Object {
-				return newEmptyControlPlaneV1("istio-system")
+			name: "default-profile.v1",
+			controlPlanes: func() (runtime.Object, runtime.Object) {
+				controlPlane := newControlPlaneV1("istio-system")
+				controlPlane.Spec.Template = ""
+
+				mutatedControlPlane := controlPlane.DeepCopy()
+				mutatedControlPlane.Spec.Profiles = []string{maistrav1.DefaultTemplate}
+				return controlPlane, mutatedControlPlane
 			},
-			expectedResponse: acceptV1WithDefaultMutation,
+		},
+		{
+			name: "default-profile.v2",
+			controlPlanes: func() (runtime.Object, runtime.Object) {
+				controlPlane := newControlPlaneV2("istio-system")
+				controlPlane.Spec.Profiles = nil
+
+				mutatedControlPlane := controlPlane.DeepCopy()
+				mutatedControlPlane.Spec.Profiles = []string{maistrav1.DefaultTemplate}
+				return controlPlane, mutatedControlPlane
+			},
 		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			controlPlane := tc.controlPlanes()
+			controlPlane, mutatedControlPlane := tc.controlPlanes()
 			mutator := createControlPlaneMutatorTestFixture()
 			response := mutator.Handle(ctx, newCreateRequest(controlPlane))
-			assert.DeepEquals(response, tc.expectedResponse, "Expected the response to set the version on create", t)
+			expectedResponse := PatchResponse(toRawExtension(controlPlane), mutatedControlPlane)
+			assert.DeepEquals(response, expectedResponse, "Expected the response to set the version on create", t)
 		})
 	}
-}
-
-func TestUpgradingToV2_5(t *testing.T) {
-	t.Run("upgrading from v2_4 to default version", func(t *testing.T) {
-		mutator := createControlPlaneMutatorTestFixture()
-		response := mutator.Handle(ctx, newUpdateRequest(newControlPlaneV2_4("istio-system"), newControlPlaneV2("istio-system")))
-		assert.DeepEquals(response, acceptWithNoMutation, "Expected mutator to accept ServiceMeshControlPlane with no mutation", t)
-	})
 }
 
 func TestVersionIsDefaultedToOldSMCPVersionOnUpdate(t *testing.T) {
@@ -356,16 +332,6 @@ func newControlPlaneV1(namespace string) *maistrav1.ServiceMeshControlPlane {
 	}
 }
 
-func newEmptyControlPlaneV1(namespace string) *maistrav1.ServiceMeshControlPlane {
-	return &maistrav1.ServiceMeshControlPlane{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "my-smcp",
-			Namespace: namespace,
-		},
-		Spec: maistrav1.ControlPlaneSpec{},
-	}
-}
-
 func newControlPlaneV2(namespace string) *maistrav2.ServiceMeshControlPlane {
 	return &maistrav2.ServiceMeshControlPlane{
 		ObjectMeta: metav1.ObjectMeta{
@@ -376,28 +342,5 @@ func newControlPlaneV2(namespace string) *maistrav2.ServiceMeshControlPlane {
 			Version:  versions.DefaultVersion.String(),
 			Profiles: []string{maistrav1.DefaultTemplate},
 		},
-	}
-}
-
-func newControlPlaneV2_4(namespace string) *maistrav2.ServiceMeshControlPlane {
-	return &maistrav2.ServiceMeshControlPlane{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "my-smcp",
-			Namespace: namespace,
-		},
-		Spec: maistrav2.ControlPlaneSpec{
-			Version:  versions.V2_4.String(),
-			Profiles: []string{maistrav1.DefaultTemplate},
-		},
-	}
-}
-
-func newEmptyControlPlaneV2(namespace string) *maistrav2.ServiceMeshControlPlane {
-	return &maistrav2.ServiceMeshControlPlane{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "my-smcp",
-			Namespace: namespace,
-		},
-		Spec: maistrav2.ControlPlaneSpec{},
 	}
 }
